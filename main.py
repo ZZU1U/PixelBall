@@ -16,7 +16,7 @@ gravity = 0.5
 bounce_stop = 0.3  # To prevent infinity bouncing
 
 resist = 0.07
-rubbing_stop = 0.1
+rubbing_stop = 0.05
 
 timer = pygame.time.Clock()
 
@@ -71,6 +71,10 @@ class Player(pygame.sprite.Sprite):
             ball.release(self)
             ball.through(mouse_pos)
 
+    def move(self, x, y):
+        self.x_pos += x
+        self.y_pos += y
+
     def update(self):
         if self.wait:
             self.wait -= 1
@@ -97,8 +101,8 @@ class Ball(pygame.sprite.Sprite):
         self.catched = False
 
     def release(self, person):
-        self.rect.x = person.x_pos
-        self.rect.y = person.y_pos
+        self.pos_x = person.rect.centerx
+        self.pos_y = person.rect.centery
 
         self.x_speed = 0
         self.y_speed = 0
@@ -161,7 +165,7 @@ ball = Ball(balls, x_pos = WIDTH-200, y_pos = HEIGHT-40)
 
 persons = pygame.sprite.Group()
 
-player = Player(persons, x_pos=WIDTH-84, y_pos=HEIGHT-84)
+player = Player(persons, x_pos=WIDTH-168, y_pos=HEIGHT-168)
 
 # Loop
 run = True
@@ -173,17 +177,32 @@ while run:
         if event.type == pygame.QUIT:
             run = False
 
+        if event.type == pygame.KEYDOWN:
+            x, y = 0, 0
+            if event.key == pygame.K_LEFT:
+                x -= 1
+            if event.key == pygame.K_RIGHT:
+                x += 1
+            if event.key == pygame.K_DOWN:
+                y += 1
+            if event.key == pygame.K_UP:
+                y -= 1
+
+            player.move(x* 10, y * 10)
+
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
                 ball.through(event.pos)
                 player.through(event.pos, ball)
 
+
+
     if ball.catched_check(player):
         player.catch_ball()
 
     if not ball.catched:
-        balls.draw(screen)
         balls.update()
+        balls.draw(screen)
 
     persons.draw(screen)
     persons.update()
