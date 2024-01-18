@@ -1,6 +1,7 @@
 import pygame
 import os
 import sys
+from random import randint, random
 
 # Init
 pygame.init()
@@ -57,7 +58,7 @@ class Player(pygame.sprite.Sprite):
     x_boost = 3
     max_x_speed = x_boost * 8
 
-    y_jump_speed = -15
+    y_jump_speed = -18
 
     def __init__(self, *group, x_pos=0, y_pos=0):
         super().__init__(*group)
@@ -78,6 +79,7 @@ class Player(pygame.sprite.Sprite):
         self.has_ball = ball
         ball.catched = True
         ball.rect = ball.rect.move(self.x_pos, self.y_pos)
+        ball.is_end = False
         self.rect = self.image.get_rect().move(self.rect.x, self.rect.y)
 
     def loose_ball(self):
@@ -171,6 +173,9 @@ class Player(pygame.sprite.Sprite):
         self.rect.x = self.x_pos
         self.rect.y = self.y_pos
 
+    def dunk(self, hoop):
+        return self.rect.colliderect(hoop.x_pos, hoop.y_pos, hoop.width, hoop.height)
+
 
 class Hoop:
     def __init__(self, x_pos, y_pos, width, height, color):
@@ -186,6 +191,10 @@ class Hoop:
 
     def draw(self, game_screen):
         pygame.draw.rect(game_screen, self.color, (self.x_pos, self.y_pos, self.width, self.height))
+
+    def go_away(self):
+        self.x_pos = randint(side_lines, WIDTH - self.width - side_lines)
+        self.y_pos = randint(bottom_line, HEIGHT // 2 - self.height - bottom_line)
 
     def is_score(self, rect: pygame.Rect):
         return rect.colliderect(pygame.Rect(self.x_pos, self.y_pos, self.width, self.height)) and not self.does_touch(rect)
@@ -206,7 +215,10 @@ class Ball(pygame.sprite.Sprite):
         self.y_speed = y_speed
         self.angle = angle
         self.retention = retention  # Bouncing coef
+        self.counter = 0
+        self.is_end = False
         self.catched = False
+        self.owner = None
 
     def bounce_off(self):
         self.x_speed *= -1
@@ -231,6 +243,11 @@ class Ball(pygame.sprite.Sprite):
                 if abs(self.y_speed) <= bounce_stop:  # Stop bouncing check
                     self.y_speed = 0
 
+    def end(self, player):
+        self.is_end = True
+        self.counter = 10
+        self.owner = player
+
     def check_borders(self):
         if self.x_pos < side_lines:
             self.x_pos = side_lines
@@ -253,8 +270,10 @@ class Ball(pygame.sprite.Sprite):
 
         coef = ((mouse_pos[1] - self.y_pos) ** 2 + (mouse_pos[0] - self.x_pos) ** 2) ** 0.5
 
-        self.y_speed = (mouse_pos[1] - self.y_pos) / coef * 25
-        self.x_speed = (mouse_pos[0] - self.x_pos) / coef * 25
+        k = random() + 0.5
+
+        self.y_speed = (mouse_pos[1] - self.y_pos) / coef * 22 * k
+        self.x_speed = (mouse_pos[0] - self.x_pos) / coef * 22 * k
 
     def catched_check(self, thrower: Player):
         if self.rect.colliderect(thrower.rect) and not thrower.wait:
@@ -263,6 +282,12 @@ class Ball(pygame.sprite.Sprite):
     def update(self):
         if self.catched:
             return
+
+        if self.counter:
+            self.counter -= 1
+        elif self.is_end:
+            self.is_end = False
+            self.owner.catch_ball(self)
 
         # Update vars
         self.check_gravity()
@@ -286,37 +311,50 @@ persons = pygame.sprite.Group()
 
 player = Player(persons, x_pos=WIDTH - 168, y_pos=HEIGHT - 168)
 
-left_hoop = Hoop(10, HEIGHT - 500 - 20, 200, 20, (255, 0, 0))
-right_hoop = Hoop(WIDTH - 10 - 200, HEIGHT - 500 - 20, 200, 20, (0, 0, 255))
+main_hoop = Hoop(10, HEIGHT - 500 - 20, 200, 20, (255, 0, 0))
 
 my_font = pygame.font.SysFont('Comic Sans MS', 30)
 
 court_img = load_image('court.png')
 
-left_score = 0
-
-right_score = 0
+score = 0
 
 # Loop
 run = True
 
 x, y = 0, 0
 
+TIME_ADD = 120
+
+countdown = TIME_ADD * 60
+
+dunk_show = 0
+
 while run:
     screen.blit(court_img, (0, 0))
 
-    game = my_font.render(f'{left_score} : {right_score}', False, (
-                                 (left_score > right_score) * 255,
-                                 (left_score == right_score) * 255,
-                                 (left_score < right_score) * 255))
+    countdown -= 1
 
-    screen.blit(game, (0, 0))
+    score_render = my_font.render(f'{score}', False, (0, 0, 0))
 
-    left_hoop.draw(screen)
-    right_hoop.draw(screen)
+    screen.blit(score_render, (WIDTH // 2 - 20, HEIGHT // 30))
+
+    countdown_render = my_font.render(f'{countdown // 60}', False, (255, 0, 0))
+
+    screen.blit(countdown_render, (WIDTH // 2 - 20, HEIGHT // 30 + 40))
+
+    if dunk_show:
+        dunk_show -= 1
+
+        countdown_render = my_font.render('!DUNK!', False, (255, 255, 255))
+
+        screen.blit(countdown_render, (WIDTH // 2 - 20, HEIGHT // 2 - 40))
+
+
+    main_hoop.draw(screen)
 
     for event in pygame.event.get():
-        if event.type == pygame.QUIT:
+        if event.type == pygame.QUIT or countdown < 0:
             run = False
 
         if event.type == pygame.KEYDOWN:
@@ -339,7 +377,7 @@ while run:
     player.move(x, y)
     y = 0
 
-    if left_hoop.does_touch(game_ball.rect) or right_hoop.does_touch(game_ball.rect):
+    if main_hoop.does_touch(game_ball.rect):
         game_ball.bounce_off()
 
     if game_ball.catched_check(player):
@@ -349,15 +387,20 @@ while run:
         balls.update()
         balls.draw(screen)
 
-    if left_hoop.is_score(game_ball.rect):
-        player.catch_ball(game_ball)
-        right_score += 1
-        print(f'{left_score} : {right_score}')
+    if main_hoop.is_score(game_ball.rect) and not game_ball.is_end:
+        countdown += max(TIME_ADD - score, 3) * 60
+        game_ball.end(player)
+        main_hoop.go_away()
+        score += 3
 
-    if right_hoop.is_score(game_ball.rect):
-        player.catch_ball(game_ball)
-        left_score += 1
-        print(f'{left_score} : {right_score}')
+    if player.dunk(main_hoop):
+        countdown += max(TIME_ADD - score, 3) * 60
+        game_ball.end(player)
+        player.loose_ball()
+        game_ball.release(player.rect)
+        main_hoop.go_away()
+        score += 2
+        dunk_show = 60
 
     persons.draw(screen)
     persons.update()
